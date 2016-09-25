@@ -254,6 +254,113 @@ C_ASSERT(sizeof(Elf32_Rela) == 12);
 C_ASSERT(sizeof(Elf32_Phdr) == 32);
 #endif
 
+typedef struct  {
+#define MACH_MAGIC_32                0xfeedface
+  uint32 magic;
+#define MACH_CPU_ARCH_ABI32          0x00000000
+#define MACH_CPU_TYPE_I386           0x00000007
+#define MACH_CPU_TYPE_X86            MACH_CPU_ARCH_ABI32 | MACH_CPU_TYPE_I386
+  uint32 cputype;
+#define MACH_CPU_SUBTYPE_I386_ALL    0x00000003
+  uint32 cpusubtype;
+#define MACH_EXECUTE                 0x2
+  uint32 filetype;
+  uint32 ncmds;
+  uint32 sizeofcmds;
+#define MACH_NOUNDEFS                0x1
+  uint32 flags;
+} Mach32_Ehdr;
+
+typedef struct {
+#define MACH_LC_SEGMENT       0x1
+#define MACH_LC_SYMTAB        0x2
+#define MACH_LC_THREAD        0x4
+#define MACH_LC_UNIXTHREAD    0x5
+  uint32 cmd;
+  uint32 cmdsize;
+} Mach32_LoadCmd;
+
+typedef struct {
+  uint32 cmd;
+  uint32 cmdsize;
+  char segname[16];
+  uint32 vmaddr;
+  uint32 vmsize;
+  uint32 fileoff;
+  uint32 filesize;
+#define MACH_VM_PROT_READ          0x1
+#define MACH_VM_PROT_WRITE         0x2
+#define MACH_VM_PROT_EXECUTE       0x4
+  uint32 maxprot;
+  uint32 initprot;
+  uint32 nsects;
+  uint32 flags;
+} Mach32_SegmentCmd;
+
+typedef struct {
+  uint32  eax;
+  uint32  ebx;
+  uint32  ecx;
+  uint32  edx;
+  uint32  edi;
+  uint32  esi;
+  uint32  ebp;
+  uint32  esp;
+  uint32  ss;
+  uint32  eflags;
+  uint32  eip;
+  uint32  cs;
+  uint32  ds;
+  uint32  es;
+  uint32  fs;
+  uint32  gs;
+} Mach32_ThreadState;
+
+typedef struct {
+  uint32  cmd;            /* MACH_LC_THREAD or MACH_LC_UNIXTHREAD */
+  uint32  cmdsize;        /* total size of this command */
+#define MACH_X86_THREAD_STATE 0x1
+  uint32  flavor;         /* flavor of thread state */
+  uint32  count;          /* count of longs in thread state */
+  Mach32_ThreadState state;
+} Mach32_ThreadCmd;
+
+typedef struct {
+  char sectname[16];
+  char segname[16];
+  uint32 addr;
+  uint32 size;
+  uint32 offset;
+  uint32 align;
+  uint32 reloff;
+  uint32 nreloc;
+  uint32 flags;
+  uint32 reserved1;
+  uint32 reserved2;
+} Mach32_Section;
+
+typedef struct {
+  uint32 cmd;
+  uint32 cmdsize;
+  uint32 symoff;
+  uint32 nsyms;
+  uint32 stroff;
+  uint32 strsize;
+} Mach32_SymtabCmd;
+
+typedef struct {
+  uint32 n_strx;
+#define MACH_N_EXT   0x1
+#define MACH_N_ABS   0x2
+#define MACH_N_SECT  0xe
+  uint8 n_type;
+  uint8 n_sect;
+#define MACH_REFERENCE_FLAG_UNDEFINED_NON_LAZY 0x00
+#define MACH_REFERENCED_DYNAMICALLY 0x10
+  int16 n_desc;
+  uint32 n_value;
+} Mach32_Nlist;
+
 typedef struct
 {
   uint8  Signature[2];
@@ -488,6 +595,7 @@ const char* StubName;
 #define FormatWinPe32     6
 #define FormatElf32       7
 #define FormatAout        8
+#define FormatMach32     9
 int OutputFormat = 0;
 int UseBss = 1;
 int NoRelocations = 0;
@@ -1719,6 +1827,17 @@ Elf32_Phdr ElfProgramHeaders[2] =
   }
 };
 
+Mach32_Ehdr MachHeader = {
+  MACH_MAGIC_32,   // magic
+  MACH_CPU_TYPE_X86,            // cputype
+  MACH_CPU_SUBTYPE_I386_ALL,      // cpusubtype
+  MACH_EXECUTE,      // filetype
+  0,      // ncmds
+  0,      // sizeofcmds
+  MACH_NOUNDEFS,      // flags
+};
+
+
 tAout AoutHeader =
 {
   OMAGIC | 0x640000/*80386*/, // magic
@@ -1810,6 +1929,7 @@ void Pass(int pass, FILE* fout, uint32 hdrsz)
             break;
           case FormatWinPe32:
           case FormatElf32:
+          case FormatMach32:
             if (align > 4096)
               error("Section alignment larger than page size (4KB)\n");
             break;
@@ -1926,6 +2046,7 @@ void Pass(int pass, FILE* fout, uint32 hdrsz)
     case FormatWinPe32:
     case FormatElf32:
     case FormatAout:
+    case FormatMach32:
       if (!isDataSection &&
           (j + 1 == SectCnt ||
            !(pSectDescrs[j + 1].Attrs & SHF_EXECINSTR))) // last code section or last code section before first data section
@@ -2356,7 +2477,7 @@ void RwDosExe(void)
   Fclose(fout);
 }
 
-void RwPeElf(void)
+void RwPeElfMach(void)
 {
   int hasData = !(pSectDescrs[SectCnt - 1].Attrs & SHF_EXECINSTR); // non-executable/data sections, if any, are last
   FILE* fout = Fopen(OutName, "wb+");
@@ -2487,6 +2608,99 @@ void RwPeElf(void)
 
       Fwrite(&ElfHeader, sizeof ElfHeader, fout);
       Fwrite(ElfProgramHeaders, sizeof ElfProgramHeaders, fout);
+      FillWithByte(0, 4096 - hsz, fout);
+    }
+    break;
+  case FormatMach32:
+    {
+      if(hasData) {
+        // TODO(tilarids): Should be an error actually.
+        printf("At this moment data is not supported for Mach.");
+      }
+      uint32 hsz = sizeof MachHeader;
+      // TODO(tilarids): Assume there is a text section.
+      uint32 text_start = pSectDescrs[SectCnt].Start;
+      uint32 text_stop = pSectDescrs[SectCnt].Stop;
+      // TODO(tilarids): Assume the text section is a last one.
+      uint32 sections_stop = text_stop;
+
+      MachHeader.ncmds = 4 + hasData;
+
+      Mach32_SegmentCmd textSegmentCmd = {
+        MACH_LC_SEGMENT, // cmd
+        sizeof(Mach32_SegmentCmd) + sizeof(Mach32_Section), // cmdsize
+        "__TEXT", // segname
+        0x0,      // vmaddr
+        0x1000,   // vmsize
+        0x0,      // fileoff
+        // TODO(tilarids): Update with an appropriate file size.
+        4096,     // filesize
+        MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE, // maxprot
+        MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE, // initprot
+        0x1, // nsects
+        0x0 // flags
+      };
+
+      Mach32_Section textSection = {
+        "__text",       //sectname
+        "__TEXT",       //segname
+        text_start,               //addr
+        text_stop - text_start,   //size
+        text_start,               //offset
+        0x0,            //align
+        0x0,            //reloff
+        0x0,            //nreloc
+        0x0,            //flags
+        0x0,            //reserved1
+        0x0,            //reserved2
+      };
+
+      Mach32_SegmentCmd linkeditSegmentCmd = {
+        MACH_LC_SEGMENT,          // cmd
+        sizeof(Mach32_SegmentCmd), // cmdsize
+        "__LINKEDIT",             // segname
+        // TODO(tilarids): Update vmsize here and above?
+        0x1000,                   // vmaddr
+        0x1000,                   // vmsize
+        text_start,               // fileoff
+        text_stop - text_start,   // filesize
+        MACH_VM_PROT_READ,        // maxprot
+        MACH_VM_PROT_READ,        // initprot
+        0x0,                      // nsects
+        0x0                       // flags
+      };
+
+      // TODO(tilarids): Consider writing a proper symbol table.
+      uint32 num_syms = 2;
+      uint32 strsize = 28;
+      Mach32_SymtabCmd symtabCmd = {
+        MACH_LC_SYMTAB,           // cmd
+        sizeof(Mach32_SymtabCmd),  // cmdsize
+        sections_stop, // symoff
+        num_syms, // nsyms
+        sections_stop + num_syms * sizeof(Mach32_Nlist), // stroff
+        strsize // strsize
+      };
+
+      Mach32_ThreadCmd unixThreadCmd = {
+        MACH_LC_UNIXTHREAD,       // cmd
+        sizeof(Mach32_ThreadCmd),  // cmdsize
+        MACH_X86_THREAD_STATE,    // flavor
+        16,                       // count
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, text_start, 0, 0, 0, 0, 0}, // state
+      };
+
+      MachHeader.sizeofcmds = sizeof textSegmentCmd + sizeof textSection
+                            + sizeof linkeditSegmentCmd + sizeof symtabCmd
+                            + sizeof unixThreadCmd;
+      hsz += MachHeader.sizeofcmds;
+
+      Fwrite(&MachHeader, sizeof MachHeader, fout);
+      Fwrite(&textSegmentCmd, sizeof textSegmentCmd, fout);
+      Fwrite(&textSection, sizeof textSection, fout);
+      Fwrite(&linkeditSegmentCmd, sizeof linkeditSegmentCmd, fout);
+      Fwrite(&symtabCmd, sizeof symtabCmd, fout);
+      Fwrite(&unixThreadCmd, sizeof unixThreadCmd, fout);
       FillWithByte(0, 4096 - hsz, fout);
     }
     break;
@@ -2719,6 +2933,32 @@ void RwPeElf(void)
         Fwrite(&PeSectionHeaders[idx], sizeof PeSectionHeaders[idx], fout);
       }
     }
+  } else if (OutputFormat == FormatMach32) {
+    // Write symbols table.
+    // TODO(tilarids): Write a proper table instead of predefined one.
+    Mach32_Nlist mhExecuteHeaderSym = {
+      2,                            // n_strx
+      MACH_N_EXT | MACH_N_ABS,      // n_type
+      0x01,                         // n_sect
+      MACH_REFERENCED_DYNAMICALLY,  // n_desc
+      0x0,                          // n_value
+    };
+
+    Mach32_Nlist startSym = {
+      22,                                     // n_strx
+      MACH_N_EXT | MACH_N_SECT,               // n_type
+      0x01,                                   // n_sect
+      MACH_REFERENCE_FLAG_UNDEFINED_NON_LAZY, // n_desc
+      FindSymbolAddress(EntryPoint),          // n_value
+    };
+
+    Fwrite(&mhExecuteHeaderSym, sizeof mhExecuteHeaderSym, fout);
+    Fwrite(&startSym, sizeof startSym, fout);
+
+    // Write string table.
+    // TODO(tilarids): Write a proper string table instead of predefined one.
+    char predefinedStringTable[] = "\x20\x0__mh_execute_header\x0start\x0";
+    Fwrite(predefinedStringTable, sizeof predefinedStringTable, fout);
   }
 
   Fclose(fout);
@@ -2744,7 +2984,8 @@ void RelocateAndWriteAllSections(void)
     break;
   case FormatWinPe32:
   case FormatElf32:
-    RwPeElf();
+  case FormatMach32:
+    RwPeElfMach();
     break;
   }
 }
@@ -3092,6 +3333,11 @@ int main(int argc, char* argv[])
       else if (!strcmp(argv[i], "-elf"))
       {
         OutputFormat = FormatElf32;
+        continue;
+      }
+      else if (!strcmp(argv[i], "-mach"))
+      {
+        OutputFormat = FormatMach32;
         continue;
       }
       else if (!strcmp(argv[i], "-norel"))
