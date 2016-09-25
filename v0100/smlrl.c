@@ -2519,7 +2519,7 @@ void RwMach(void) {
       0x1, // nsects
       0x0 // flags
     };
-    // strncpy(segmentCmd.segname, pSectDescrs[sectionIdx].pName, 16);
+    strncpy(segmentCmd.segname, pSectDescrs[sectionIdx].pName, 16);
     Mach32_Section section = {
       "__text",       //sectname
       "__TEXT",       //segname
@@ -2533,8 +2533,8 @@ void RwMach(void) {
       0x0,            //reserved1
       0x0,            //reserved2
     };
-    // strncpy(section.sectname, pSectDescrs[sectionIdx].pName, 16);
-    // strncpy(section.segname, pSectDescrs[sectionIdx].pName, 16);
+    strncpy(section.sectname, pSectDescrs[sectionIdx].pName, 16);
+    strncpy(section.segname, pSectDescrs[sectionIdx].pName, 16);
     Fwrite(&segmentCmd, sizeof segmentCmd, fout);
     Fwrite(&section, sizeof section, fout);
   }
