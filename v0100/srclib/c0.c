@@ -13,7 +13,7 @@ extern void __x87init(void);
 #include <stdlib.h>
 #include <unistd.h>
 
-#ifndef _LINUX
+#if !defined(_LINUX) && !defined(_MACOS)
 // Implements the logic of __getmainargs() from msvcrt.dll, msvcr70.dll ... msvcr120.dll.
 //static
 int __ArgParser__(char* in, char* out, char** argv)

@@ -176,8 +176,6 @@ ssize_t write(int fd, void* buf, size_t size)
 
 #ifdef _MACOS
 
-// TODO(tilarids): Read call convention docs actually. Have no idea what's the
-// parameter order :)
 ssize_t write(int fd, void* buf, size_t size)
 {
   asm("mov eax, 4\n" // sys_write
