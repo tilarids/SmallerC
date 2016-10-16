@@ -103,3 +103,15 @@ int unlink(char* name)
 }
 
 #endif // _LINUX
+
+#ifdef _MACOS
+
+int unlink(char* name)
+{
+  asm("mov eax, 10\n" // sys_unlink
+      "push dword [ebp + 8]\n"
+      "sub esp, 4\n"
+      "int 0x80");
+}
+
+#endif // _MACOS

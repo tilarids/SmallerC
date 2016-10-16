@@ -33,6 +33,8 @@ void* malloc(unsigned size)
 #endif // _DOS
 
 
+#if defined(_LINUX) || defined(_MACOS)
+
 #ifdef _LINUX
 
 static
@@ -42,6 +44,19 @@ char* SysBrk(char* newBreak)
       "mov ebx, [ebp + 8]\n"
       "int 0x80");
 }
+
+#else // should be _MACOS
+
+static
+char* SysBrk(char* newBreak)
+{
+  asm("mov eax, 45\n" // sys_brk
+      "push dword [ebp + 8]\n"
+      "sub esp, 4\n"
+      "int 0x80");
+}
+
+#endif // _LINUX
 
 static char* CurBreak;
 
@@ -81,7 +96,7 @@ void* __sbrk(int increment)
   return (CurBreak += increment) - increment;
 }
 
-#endif // _LINUX
+#endif // defined(_LINUX) || defined(_MACOS)
 
 
 #ifndef __HUGE__
@@ -172,7 +187,7 @@ int init(void)
 
 #endif // _DOS
 
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
 
 static
 int init(void)
@@ -202,13 +217,13 @@ int init(void)
   return 0;
 }
 
-#endif // _LINUX
+#endif // defined(_LINUX) || defined(_MACOS)
 
 void* malloc(unsigned size)
 {
   static int uninitialized = -1;
   unsigned* blk;
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
   unsigned* last;
   unsigned togrow;
 #endif
@@ -225,7 +240,7 @@ void* malloc(unsigned size)
 
   size = (size + 2*HEADER_FOOTER_SZ - 1) & -2*HEADER_FOOTER_SZ;
 
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
   last =
 #endif
   blk = (unsigned*)__heap_start;
@@ -258,13 +273,13 @@ void* malloc(unsigned size)
       return (void*)((unsigned)blk + HEADER_FOOTER_SZ);
     }
 
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
     last = blk;
 #endif
     blk = nxtblk;
   }
 
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
   if (!last[1]) // if last block is free, it will be reused
   {
     togrow = size - last[0];

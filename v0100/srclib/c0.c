@@ -27,7 +27,7 @@ int __ArgParser__(char* in, char* out, char** argv)
   } state = WHITE;
   int c;
   unsigned slashes = 0;
-  
+
   while ((c = *in++) != '\0')
   {
     if (state == WHITE)
@@ -542,7 +542,7 @@ void __start__(void)
 
 #endif // _WINDOWS
 
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
 
 char** __environ;
 
@@ -555,4 +555,5 @@ void __start__(int argc, char** argv)
   exit(main(argc, argv));
 }
 
-#endif // _LINUX
+#endif // defined(_LINUX) || defined(_MACOS)
+

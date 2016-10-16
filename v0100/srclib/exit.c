@@ -60,6 +60,19 @@ void SysExit(int status)
 
 #endif // _LINUX
 
+#ifdef _MACOS
+
+static
+void SysExit(int status)
+{
+  asm("mov eax, 1\n" // sys_exit
+      "push dword [ebp + 8]\n"
+      "sub   esp, 4\n"
+      "int 0x80");
+}
+
+#endif // _MACOS
+
 void __ExitInner(int iterator, int flushclose, int status)
 {
   if (iterator && __pAtExitIterator)
@@ -91,9 +104,9 @@ void __ExitInner(int iterator, int flushclose, int status)
   ExitProcess(status);
 #endif // _WINDOWS
 
-#ifdef _LINUX
+#if defined(_LINUX) || defined(_MACOS)
   SysExit(status);
-#endif // _LINUX
+#endif // defined(_LINUX) || defined(_MACOS)
 }
 
 void _Exit(int status)

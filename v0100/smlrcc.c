@@ -160,7 +160,7 @@ const char* LibName[] =
   NULL,     // FormatFlat32
   "lcw.a",  // FormatWinPe32
   "lcl.a",  // FormatElf32
-  "lcl.a",  // FormatMach32 - uses the same lib as Elf32
+  "lcm.a",  // FormatMach32
 };
 
 int verbose = 0;

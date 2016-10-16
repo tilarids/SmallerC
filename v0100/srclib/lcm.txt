@@ -1,0 +1,22 @@
+-macos -c -Wall -o lcm.a
+
+c0l.asm
+c0.c
+x87.c
+
+exit.c
+
+stdin.c
+stdout.c
+stderr.c
+
+fclose.c
+fflush.c
+close.c
+remove.c
+unlink.c
+free.c
+write.c
+
+stdio1.c
+malloc.c
