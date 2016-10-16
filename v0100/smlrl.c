@@ -851,6 +851,10 @@ void FillWithByte(unsigned char byte, size_t size, FILE* stream)
   }
 }
 
+int AlignTo(size_t ofs, size_t align) {
+  return (ofs + align - 1) / align * align;
+}
+
 int RelCmp(const void* p1_, const void* p2_)
 {
   const Elf32_Rel *p1 = (const Elf32_Rel*)p1_, *p2 = (const Elf32_Rel*)p2_;
@@ -1937,7 +1941,7 @@ void Pass(int pass, FILE* fout, uint32 hdrsz)
 
           if (align > 1)
           {
-            newOfs = (ofs + align - 1) / align * align;
+            newOfs = AlignTo(ofs, align);;
             if (newOfs < ofs)
               errSectTooBig();
             if (pass)
@@ -2023,7 +2027,7 @@ void Pass(int pass, FILE* fout, uint32 hdrsz)
       {
         // The code segment has been written, prepare for writing the data segment.
         // Pad the code segment to an integral number of 16-byte paragraphs
-        uint32 newOfs = (ofs + 15) / 16 * 16;
+        uint32 newOfs = AlignTo(ofs, 16);
         if (pass)
         {
           FillWithByte(0xCC, newOfs - ofs, fout); // int3
@@ -2054,7 +2058,7 @@ void Pass(int pass, FILE* fout, uint32 hdrsz)
       {
         // The code section has been written, prepare for writing the data section.
         // Pad the code section to an integral number of 4KB pages
-        uint32 newOfs = (ofs + 4095) / 4096 * 4096;
+        uint32 newOfs = AlignTo(ofs, 4096);
         if (newOfs < ofs)
           errSectTooBig();
         if (pass)
@@ -2071,7 +2075,7 @@ void Pass(int pass, FILE* fout, uint32 hdrsz)
       {
         // The data section has been written.
         // Pad the data section to an integral number of 4KB pages
-        uint32 newOfs = (ofs + 4095) / 4096 * 4096;
+        uint32 newOfs = AlignTo(ofs, 4096);
         if (newOfs < ofs)
           errSectTooBig();
         if (pass)
@@ -2509,16 +2513,17 @@ void RwMach(void) {
       MACH_LC_SEGMENT, // cmd
       sizeof(Mach32_SegmentCmd) + sizeof(Mach32_Section), // cmdsize
       "__TEXT", // segname
-      0x0,      // vmaddr
-      0x1000,   // vmsize
-      0x0,      // fileoff
-      // TODO(tilarids): Update with an appropriate file size.
+      AlignTo(start - text_start, 0x1000),      // vmaddr
+      AlignTo(stop - start, 0x1000),   // vmsize
+      AlignTo(start - text_start, 0x1000),      // fileoff
+      // TODO(tilarids): Update wit h an appropriate file size.
       4096,     // filesize
-      MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE, // maxprot
-      MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE, // initprot
+      MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // maxprot
+      MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // initprot
       0x1, // nsects
       0x0 // flags
     };
+    // NOTE: Using proper names drives otool crazy. Let's use defaults for now.
     strncpy(segmentCmd.segname, pSectDescrs[sectionIdx].pName, 16);
     Mach32_Section section = {
       "__text",       //sectname
@@ -2540,7 +2545,7 @@ void RwMach(void) {
   }
 
   // Align sections stop.
-  sections_stop = (sections_stop + 4095) / 4096 * 4096;
+  sections_stop = AlignTo(sections_stop, 4096);
 
   uint32 predefinedLinkeditSize = 52;
   Mach32_SegmentCmd linkeditSegmentCmd = {
@@ -2548,7 +2553,7 @@ void RwMach(void) {
     sizeof(Mach32_SegmentCmd), // cmdsize
     "__LINKEDIT",             // segname
     // TODO(tilarids): Update vmsize here and above?
-    0x1000,                   // vmaddr
+    sections_stop,                   // vmaddr
     0x1000,                   // vmsize
     sections_stop,            // fileoff
     predefinedLinkeditSize,   // filesize
@@ -2575,7 +2580,7 @@ void RwMach(void) {
     sizeof(Mach32_ThreadCmd),  // cmdsize
     MACH_X86_THREAD_STATE,    // flavor
     16,                       // count
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, text_start, 0, 0, 0, 0, 0}, // state
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, FindSymbolAddress(EntryPoint), 0, 0, 0, 0, 0}, // state
   };
 
 
@@ -3356,6 +3361,8 @@ int main(int argc, char* argv[])
       else if (!strcmp(argv[i], "-mach"))
       {
         OutputFormat = FormatMach32;
+        // TODO(tilarids): Support BSS.
+        UseBss = 0;
         continue;
       }
       else if (!strcmp(argv[i], "-norel"))
