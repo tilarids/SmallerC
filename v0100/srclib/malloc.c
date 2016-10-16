@@ -47,13 +47,11 @@ char* SysBrk(char* newBreak)
 
 #else // should be _MACOS
 
+// TODO(tilarids): There is no brk syscall. Implement it in another way.
 static
 char* SysBrk(char* newBreak)
 {
-  asm("mov eax, 45\n" // sys_brk
-      "push dword [ebp + 8]\n"
-      "sub esp, 4\n"
-      "int 0x80");
+  return (char*)-1;
 }
 
 #endif // _LINUX
