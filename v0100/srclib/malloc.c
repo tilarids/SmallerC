@@ -206,7 +206,7 @@ int init(void)
 
 #if defined(_MACOS)
 
-unsigned char buffer[4096];
+unsigned char buffer[64 * 1024 * 1024];
 
 static
 int init(void)
