@@ -2530,7 +2530,7 @@ void RwMach(void) {
       AlignTo(stop - start, 0x1000),   // vmsize
       AlignTo(start - text_start, 0x1000),      // fileoff
       // TODO(tilarids): Update with an appropriate file size.
-      4096,     // filesize
+      AlignTo(realSize, 0x1000),     // filesize
       MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // maxprot
       MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // initprot
       0x1, // nsects

@@ -33,9 +33,7 @@ void* malloc(unsigned size)
 #endif // _DOS
 
 
-#if defined(_LINUX) || defined(_MACOS)
-
-#ifdef _LINUX
+#if defined(_LINUX)
 
 static
 char* SysBrk(char* newBreak)
@@ -44,17 +42,6 @@ char* SysBrk(char* newBreak)
       "mov ebx, [ebp + 8]\n"
       "int 0x80");
 }
-
-#else // should be _MACOS
-
-// TODO(tilarids): There is no brk syscall. Implement it in another way.
-static
-char* SysBrk(char* newBreak)
-{
-  return (char*)-1;
-}
-
-#endif // _LINUX
 
 static char* CurBreak;
 
@@ -94,7 +81,7 @@ void* __sbrk(int increment)
   return (CurBreak += increment) - increment;
 }
 
-#endif // defined(_LINUX) || defined(_MACOS)
+#endif // defined(_LINUX)
 
 
 #ifndef __HUGE__
@@ -185,7 +172,7 @@ int init(void)
 
 #endif // _DOS
 
-#if defined(_LINUX) || defined(_MACOS)
+#if defined(_LINUX)
 
 static
 int init(void)
@@ -215,13 +202,28 @@ int init(void)
   return 0;
 }
 
-#endif // defined(_LINUX) || defined(_MACOS)
+#endif // defined(_LINUX)
+
+#if defined(_MACOS)
+
+unsigned char buffer[4096];
+
+static
+int init(void)
+{
+  __heap_start = buffer;
+  __heap_stop = sizeof(buffer);
+
+  return 0;
+}
+
+#endif // defined(_MACOS)
 
 void* malloc(unsigned size)
 {
   static int uninitialized = -1;
   unsigned* blk;
-#if defined(_LINUX) || defined(_MACOS)
+#if defined(_LINUX)
   unsigned* last;
   unsigned togrow;
 #endif
@@ -238,7 +240,7 @@ void* malloc(unsigned size)
 
   size = (size + 2*HEADER_FOOTER_SZ - 1) & -2*HEADER_FOOTER_SZ;
 
-#if defined(_LINUX) || defined(_MACOS)
+#if defined(_LINUX)
   last =
 #endif
   blk = (unsigned*)__heap_start;
@@ -271,13 +273,13 @@ void* malloc(unsigned size)
       return (void*)((unsigned)blk + HEADER_FOOTER_SZ);
     }
 
-#if defined(_LINUX) || defined(_MACOS)
+#if defined(_LINUX)
     last = blk;
 #endif
     blk = nxtblk;
   }
 
-#if defined(_LINUX) || defined(_MACOS)
+#if defined(_LINUX)
   if (!last[1]) // if last block is free, it will be reused
   {
     togrow = size - last[0];
