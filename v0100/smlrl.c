@@ -2500,15 +2500,28 @@ void RwMach(void) {
   Pass(0, NULL, hdrsz);
 
   uint32 sections_stop = 0;
+  uint32 vmaddr_stop = 0;
   uint32 text_start = pSectDescrs[SectCnt].Start;
 
   Fwrite(&MachHeader, sizeof MachHeader, fout);
+
+
 
   for (int sectionIdx = SectCnt; sectionIdx <= SectCnt + hasData; ++sectionIdx) {
     uint32 start = pSectDescrs[sectionIdx].Start;
     uint32 stop = pSectDescrs[sectionIdx].Stop;
     sections_stop = stop;
+    vmaddr_stop = stop;
 
+    uint32 realSize = stop - start;
+
+    if ((sectionIdx == SectCnt + 1) && UseBss) {  // data
+      uint32 i = SectCnt - 1;
+      while (pSectDescrs[i].Attrs & SHT_NOBITS)
+          i--;
+      realSize = ((pSectDescrs[i].Stop + 0xFFF) & 0xFFFFF000) - start;
+      sections_stop = ((pSectDescrs[i].Stop + 0xFFF) & 0xFFFFF000);
+    }
     Mach32_SegmentCmd segmentCmd = {
       MACH_LC_SEGMENT, // cmd
       sizeof(Mach32_SegmentCmd) + sizeof(Mach32_Section), // cmdsize
@@ -2516,20 +2529,21 @@ void RwMach(void) {
       AlignTo(start - text_start, 0x1000),      // vmaddr
       AlignTo(stop - start, 0x1000),   // vmsize
       AlignTo(start - text_start, 0x1000),      // fileoff
-      // TODO(tilarids): Update wit h an appropriate file size.
+      // TODO(tilarids): Update with an appropriate file size.
       4096,     // filesize
       MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // maxprot
       MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // initprot
       0x1, // nsects
       0x0 // flags
     };
+
     // NOTE: Using proper names drives otool crazy. Let's use defaults for now.
     strncpy(segmentCmd.segname, pSectDescrs[sectionIdx].pName, 16);
     Mach32_Section section = {
       "__text",       //sectname
       "__TEXT",       //segname
       start,                //addr
-      stop - start,         //size
+      realSize,         //size
       start,                //offset
       0x0,            //align
       0x0,            //reloff
@@ -2546,6 +2560,7 @@ void RwMach(void) {
 
   // Align sections stop.
   sections_stop = AlignTo(sections_stop, 4096);
+  vmaddr_stop = AlignTo(vmaddr_stop, 4096);
 
   uint32 predefinedLinkeditSize = 52;
   Mach32_SegmentCmd linkeditSegmentCmd = {
@@ -2553,7 +2568,7 @@ void RwMach(void) {
     sizeof(Mach32_SegmentCmd), // cmdsize
     "__LINKEDIT",             // segname
     // TODO(tilarids): Update vmsize here and above?
-    sections_stop,                   // vmaddr
+    vmaddr_stop,                   // vmaddr
     0x1000,                   // vmsize
     sections_stop,            // fileoff
     predefinedLinkeditSize,   // filesize
@@ -3361,8 +3376,6 @@ int main(int argc, char* argv[])
       else if (!strcmp(argv[i], "-mach"))
       {
         OutputFormat = FormatMach32;
-        // TODO(tilarids): Support BSS.
-        UseBss = 0;
         continue;
       }
       else if (!strcmp(argv[i], "-norel"))
