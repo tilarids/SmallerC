@@ -2522,38 +2522,34 @@ void RwMach(void) {
       realSize = ((pSectDescrs[i].Stop + 0xFFF) & 0xFFFFF000) - start;
       sections_stop = ((pSectDescrs[i].Stop + 0xFFF) & 0xFFFFF000);
     }
-    Mach32_SegmentCmd segmentCmd = {
-      MACH_LC_SEGMENT, // cmd
-      sizeof(Mach32_SegmentCmd) + sizeof(Mach32_Section), // cmdsize
-      "__TEXT", // segname
-      AlignTo(start - text_start, 0x1000),      // vmaddr
-      AlignTo(stop - start, 0x1000),   // vmsize
-      AlignTo(start - text_start, 0x1000),      // fileoff
-      // TODO(tilarids): Update with an appropriate file size.
-      AlignTo(realSize, 0x1000),     // filesize
-      MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // maxprot
-      MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE, // initprot
-      0x1, // nsects
-      0x0 // flags
-    };
-
-    // NOTE: Using proper names drives otool crazy. Let's use defaults for now.
+    Mach32_SegmentCmd segmentCmd;
+    segmentCmd.cmd = MACH_LC_SEGMENT;
+    segmentCmd.cmdsize = sizeof(Mach32_SegmentCmd) + sizeof(Mach32_Section);
+    // NOTE: Using proper names drives otool crazy.
     strncpy(segmentCmd.segname, pSectDescrs[sectionIdx].pName, 16);
-    Mach32_Section section = {
-      "__text",       //sectname
-      "__TEXT",       //segname
-      start,                //addr
-      realSize,         //size
-      start,                //offset
-      0x0,            //align
-      0x0,            //reloff
-      0x0,            //nreloc
-      0x0,            //flags
-      0x0,            //reserved1
-      0x0,            //reserved2
-    };
+    segmentCmd.vmaddr = AlignTo(start - text_start, 0x1000);
+    segmentCmd.vmsize = AlignTo(stop - start, 0x1000);
+    segmentCmd.fileoff = AlignTo(start - text_start, 0x1000);
+    // TODO(tilarids): Update with an appropriate file size.
+    segmentCmd.filesize = AlignTo(realSize, 0x1000);
+    segmentCmd.maxprot = MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE;
+    segmentCmd.initprot = MACH_VM_PROT_READ | MACH_VM_PROT_EXECUTE | MACH_VM_PROT_WRITE;
+    segmentCmd.nsects = 0x1;
+    segmentCmd.flags = 0x0;
+
+    Mach32_Section section;
     strncpy(section.sectname, pSectDescrs[sectionIdx].pName, 16);
     strncpy(section.segname, pSectDescrs[sectionIdx].pName, 16);
+    section.addr = start;
+    section.size = realSize;
+    section.offset = start;
+    section.align = 0x0;
+    section.reloff = 0x0;
+    section.nreloc = 0x0;
+    section.flags = 0x0;
+    section.reserved1 = 0x0;
+    section.reserved2 = 0x0;
+
     Fwrite(&segmentCmd, sizeof segmentCmd, fout);
     Fwrite(&section, sizeof section, fout);
   }
@@ -2563,41 +2559,40 @@ void RwMach(void) {
   vmaddr_stop = AlignTo(vmaddr_stop, 4096);
 
   uint32 predefinedLinkeditSize = 52;
-  Mach32_SegmentCmd linkeditSegmentCmd = {
-    MACH_LC_SEGMENT,          // cmd
-    sizeof(Mach32_SegmentCmd), // cmdsize
-    "__LINKEDIT",             // segname
-    // TODO(tilarids): Update vmsize here and above?
-    vmaddr_stop,                   // vmaddr
-    0x1000,                   // vmsize
-    sections_stop,            // fileoff
-    predefinedLinkeditSize,   // filesize
-    MACH_VM_PROT_READ,        // maxprot
-    MACH_VM_PROT_READ,        // initprot
-    0x0,                      // nsects
-    0x0                       // flags
-  };
+  Mach32_SegmentCmd linkeditSegmentCmd;
+  linkeditSegmentCmd.cmd = MACH_LC_SEGMENT;
+  linkeditSegmentCmd.cmdsize = sizeof(Mach32_SegmentCmd);
+  strncpy(linkeditSegmentCmd.segname, "__LINKEDIT", 16);
+  linkeditSegmentCmd.vmaddr = vmaddr_stop;
+  // TODO(tilarids): Should we change the vmsize here?
+  linkeditSegmentCmd.vmsize = 0x1000;
+  linkeditSegmentCmd.fileoff = sections_stop;
+  linkeditSegmentCmd.filesize = predefinedLinkeditSize;
+  linkeditSegmentCmd.maxprot = MACH_VM_PROT_READ;
+  linkeditSegmentCmd.initprot = MACH_VM_PROT_READ;
+  linkeditSegmentCmd.nsects = 0x0;
+  linkeditSegmentCmd.flags = 0x0;
+
 
   // TODO(tilarids): Consider writing a proper symbol table.
-  uint32 num_syms = 2;
-  uint32 strsize = 28;
-  Mach32_SymtabCmd symtabCmd = {
-    MACH_LC_SYMTAB,           // cmd
-    sizeof(Mach32_SymtabCmd),  // cmdsize
-    sections_stop, // symoff
-    num_syms, // nsyms
-    sections_stop + num_syms * sizeof(Mach32_Nlist), // stroff
-    strsize // strsize
-  };
+  static const uint32 num_syms = 2;
+  static const uint32 strsize = 28;
+  Mach32_SymtabCmd symtabCmd;
+  symtabCmd.cmd =  MACH_LC_SYMTAB;
+  symtabCmd.cmdsize =  sizeof(Mach32_SymtabCmd);
+  symtabCmd.symoff =  sections_stop;
+  symtabCmd.nsyms =  num_syms;
+  symtabCmd.stroff =  sections_stop + num_syms * sizeof(Mach32_Nlist);
+  symtabCmd.strsize =  strsize;
 
   Mach32_ThreadCmd unixThreadCmd = {
     MACH_LC_UNIXTHREAD,       // cmd
     sizeof(Mach32_ThreadCmd),  // cmdsize
     MACH_X86_THREAD_STATE,    // flavor
     16,                       // count
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, FindSymbolAddress(EntryPoint), 0, 0, 0, 0, 0}, // state
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // state
   };
-
+  unixThreadCmd.state.eip = FindSymbolAddress(EntryPoint);
 
   Fwrite(&linkeditSegmentCmd, sizeof linkeditSegmentCmd, fout);
   Fwrite(&symtabCmd, sizeof symtabCmd, fout);
@@ -2620,8 +2615,9 @@ void RwMach(void) {
     MACH_N_EXT | MACH_N_SECT,               // n_type
     0x01,                                   // n_sect
     MACH_REFERENCE_FLAG_UNDEFINED_NON_LAZY, // n_desc
-    FindSymbolAddress(EntryPoint),          // n_value
+    0,                                      // n_value
   };
+  startSym.n_value = FindSymbolAddress(EntryPoint);
 
   Fwrite(&mhExecuteHeaderSym, sizeof mhExecuteHeaderSym, fout);
   Fwrite(&startSym, sizeof startSym, fout);
