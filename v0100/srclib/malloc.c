@@ -212,7 +212,19 @@ static
 int init(void)
 {
   __heap_start = buffer;
-  __heap_stop = sizeof(buffer);
+  __heap_stop =  buffer + sizeof(buffer);
+
+  // TODO(tilarids): Not sure if we need this. Check and remove?
+  for (unsigned* blk = (unsigned*)__heap_start; blk < (unsigned*)__heap_stop; ++blk) {
+    *blk = 0;
+  }
+
+  unsigned heapsz = __heap_stop - __heap_start - 2*HEADER_FOOTER_SZ;
+
+  *((unsigned*)__heap_start + 0) = heapsz;
+  *((unsigned*)__heap_start + 1) = 0; // free
+  *((unsigned*)__heap_stop - 2) = 0; // free
+  *((unsigned*)__heap_stop - 1) = heapsz;
 
   return 0;
 }
